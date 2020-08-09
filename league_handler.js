@@ -158,13 +158,13 @@ class LeagueHandler {
 		if (args.begin_time != undefined) {
 			var date = new Date(args.begin_time);
 			//console.log(date.getTime());
-			var time = parseInt(date.getTime)
+			var time = parseInt(date.getTime())
 			if (!isNaN(time)) url += "beginTime=" + date.getTime() + "&";
 		}
 		if (args.end_time != undefined) {
 			var date = new Date(args.end_time);
 			//console.log(date.getTime());
-			var time = parseInt(date.getTime)
+			var time = parseInt(date.getTime())
 			if (!isNaN(time)) url += "endTime=" + date.getTime() + "&";
 		}
 		var response = await this.failsafeGet(url, this.riot_api_header).catch(err => console.log("Error in getMatchHistory:", err));
@@ -402,8 +402,9 @@ class LeagueHandler {
 			case 404:
 				return response;
 			case 429: 
-				await sleep(5000);
-				console.log("Rate limited exceeded, trying again in 7 seconds");
+				var sleep_time = response.headers["retry-after"];
+				console.log("Rate limit exceeded, trying again in " + sleep_time + " seconds");
+				await sleep(sleep_time*1000);
 			case 503:
 			case 504:
 				await sleep(2000);
