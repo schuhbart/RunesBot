@@ -15,6 +15,7 @@ class LeagueHandler {
 		this.rank_name = this.default_names;
 		this.default_region = this.bot_definitions["DefaultRegion"];
 		this.riot_api_header = { headers: { 'X-Riot-Token': this.key } }
+		this.rate_cap = 80;
 
 		
 		this.QUERY_SUCCESS = 0;
@@ -151,25 +152,25 @@ class LeagueHandler {
 		if (args.begin_time != undefined) {
 			var date = new Date(args.begin_time);
 			//console.log(date.getTime());
-			url += "beginTime=" + date.getTime() + "&";
+			var time = parseInt(date.getTime)
+			if (!isNaN(time)) url += "beginTime=" + date.getTime() + "&";
 		}
 		if (args.end_time != undefined) {
 			var date = new Date(args.end_time);
 			//console.log(date.getTime());
-			url += "endTime=" + date.getTime() + "&";
+			var time = parseInt(date.getTime)
+			if (!isNaN(time)) url += "endTime=" + date.getTime() + "&";
 		}
 		var response = await this.failsafeGet(url, this.riot_api_header).catch(err => console.log("Error in getMatchHistory:", err));
 		var data = response.data;
 		if (data != undefined) {
 			var matches = data.matches;
-			var total_games = data.totalGames;
 			var begin_index = 100;
-			while (begin_index <= total_games) {
+			while (response.data.matches.length > 0) {
 				var temp_url = url + "beginIndex=" + begin_index +"&";
-				var response = await this.failsafeGet(temp_url, this.riot_api_header);
+				response = await this.failsafeGet(temp_url, this.riot_api_header);
 				matches = matches.concat(response.data.matches);
 				begin_index += 100;
-				total_games = response.data.totalGames
 			}
 			return matches;
 		}
@@ -178,8 +179,8 @@ class LeagueHandler {
 
 	formatMatchHistoryArgs(args_array, mode = "default") {
 		var args = {};
-		var arg_names = ["name", "region", "champion", "begin_time", "end_time"]
-		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07"]    
+		var arg_names = ["name", "region", "champion", "begin_time", "end_time", "flags"]
+		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07", undefined, undefined]    
 		if (mode == "help") return arg_names.join(" ");
 		if (mode == "example") return default_vals.join(" ");
 		if (args_array.length == 0) args_array = default_vals
@@ -214,8 +215,24 @@ class LeagueHandler {
 			else urls.push(base_url + game_id)
 		})
 		var i = 0;
+		var skip_interval;
+		var flags = this.formatMatchHistoryArgs(args_array).flags;
+		if (flags !== undefined) {
+			if (flags == "--instant") {
+				skip_interval = Math.ceil((urls.length / this.rate_cap) / 0.7)
+			} else {
+				var parsed = parseInt(flags)
+				if (parsed !== NaN) {
+					skip_interval = parsed;
+				}				
+			}			
+		}
+		if (skip_interval > 1) console.log("Only one out of every " + skip_interval + " games will be downloaded.");
 		for (var url of urls) {
 			i++;
+			if (i % skip_interval != 0) {
+				continue;
+			}
 			console.log("Downloading match " + i + " out of " + urls.length);
 			var response = await this.failsafeGet(url);
 			var data = response.data;
@@ -225,9 +242,9 @@ class LeagueHandler {
 			}
 			var rate_limit = response.headers["x-app-rate-limit-count"];
 			rate_limit = rate_limit.split(",").map(s => s.split(":")[0]);
-			if (rate_limit[1] > 70) {
-				console.log("rate limit exceeded:", rate_limit, "waiting 6s. i is", i) 
-				await sleep(6000); 
+			if (rate_limit[1] > this.rate_cap) {
+				console.log("rate limit exceeded:", rate_limit, "waiting 10s. i is", i) 
+				await sleep(10000); 
 			}
 		}
 		fs.writeFileSync(file_path, JSON.stringify(cached_matches));
