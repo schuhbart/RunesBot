@@ -16,6 +16,7 @@ class LeagueHandler {
 		this.default_region = this.bot_definitions["DefaultRegion"];
 		this.riot_api_header = { headers: { 'X-Riot-Token': this.key } }
 		this.rate_cap = 80;
+		this.conserve_rate_limit = true;
 
 		
 		this.QUERY_SUCCESS = 0;
@@ -95,7 +96,9 @@ class LeagueHandler {
 					var account_id = data.accountId;
 					this.id_cache[region][summoner_name] = { id: summoner_id, name: exact_summoner_name, account_id: account_id}
 					return this.id_cache[region][summoner_name]
-				} else console.log("Status code in getSummonerID:", response.status, "response:", response)
+				} else if (response.status == 404) {
+					return undefined;
+				} else console.log("Status code in getSummonerID:", response.status, "headers:", response.headers)
 			} else console.log("Response in getSummonerID undefined")
 		}
 	}
@@ -144,7 +147,9 @@ class LeagueHandler {
 		var args = this.formatMatchHistoryArgs(args_array);
 		console.log("Getting match history for " + args.name + " (" + args.region + ")");
 		const account_data = (await this.getSummonerIDAsync(args.name, args.region));
-		if (account_data == undefined) console.log("Error in getMatchHistory: account data undefined");
+		if (account_data == undefined) {
+			return;
+		}
 		var id = account_data.account_id;
 		var url = this.getBaseUrl(args.region) + "/lol/match/v4/matchlists/by-account/" + id +"?";
 		if (args.champion != undefined && args.champion != "_") url += "champion=" + this.championNameToID(args.champion) + "&";
@@ -187,13 +192,14 @@ class LeagueHandler {
 		args_array.forEach((val, i) => {
 			var arg_name = arg_names[i];
 			if (val != "d") args[arg_name] = val;
-			else args[arg_name] = default_vals[i];      
+			else if (val != "_") args[arg_name] = default_vals[i];      
 		})    
 		return args;    
 	}
 
 	async getDataFromMatches(args_array) {    
 		var matches = await this.getMatchHistory(args_array);
+		if (matches === undefined) return [];
 		var region = this.formatMatchHistoryArgs(args_array).region;
 		var name = this.formatMatchHistoryArgs(args_array).name;
 		var account_id = (await this.getSummonerIDAsync(name, region)).account_id
@@ -219,7 +225,7 @@ class LeagueHandler {
 		var flags = this.formatMatchHistoryArgs(args_array).flags;
 		if (flags !== undefined) {
 			if (flags == "--instant") {
-				skip_interval = Math.ceil((urls.length / this.rate_cap) / 0.7)
+				skip_interval = Math.ceil((urls.length / this.rate_cap) / 0.6)
 			} else {
 				var parsed = parseInt(flags)
 				if (parsed !== NaN) {
@@ -242,9 +248,12 @@ class LeagueHandler {
 			}
 			var rate_limit = response.headers["x-app-rate-limit-count"];
 			rate_limit = rate_limit.split(",").map(s => s.split(":")[0]);
-			if (rate_limit[1] > this.rate_cap) {
-				console.log("rate limit exceeded:", rate_limit, "waiting 10s. i is", i) 
-				await sleep(10000); 
+			if (this.conserve_rate_limit) {
+				if (rate_limit[1] > this.rate_cap) {
+					console.log("rate limit exceeded:", rate_limit, "waiting 10s. i is", i) 
+					await sleep(10000); 
+				}
+
 			}
 		}
 		fs.writeFileSync(file_path, JSON.stringify(cached_matches));
@@ -290,21 +299,31 @@ class LeagueHandler {
 	async getPastNames(args_array) {
 		var matches = await this.getDataFromMatches(args_array);
 		var formated = this.formatMatchHistoryArgs(args_array)
-		var names = []
-		var account_id = (await this.getSummonerIDAsync(formated.name, formated.region)).account_id;
-		for (var match of Object.values(matches)) {
+		var names = {}
+		var account_data = await this.getSummonerIDAsync(formated.name, formated.region);
+		if (account_data === undefined) return ["Summoner not found."];
+		var account_id = account_data.account_id
+		for (var gameid in matches) {
+			var match = matches[gameid]
 			for (var team of match.participants) {
 				for (var participant of team) {
 					if (participant.account_id == account_id) {
 						var name = participant.name;
-						if (!names.includes(name)) {
-							names.push(name);
-						}
+						var vals = Object.values(names);
+						names[gameid] = name;
 					}
 				}
 			}
 		}
-		return names;
+		var sorted_names = []
+		Object.keys(names).sort().forEach(function(key) {
+			sorted_names.push(names[key]);
+		});
+		var reduced_names = [];
+		for(var i = 0; i < sorted_names.length; i++) {
+			if (sorted_names[i] != sorted_names[i+1]) reduced_names.push(sorted_names[i])
+		}
+		return reduced_names.reverse();
 	}
 
 	updateMap(champion_id, map, win) {
@@ -370,21 +389,25 @@ class LeagueHandler {
 	}
 
 	async failsafeGet(url) {
-		var retry = false;
+		url = encodeURI(url);
 		var response = await this.axios.get(url).catch(err => {
 			console.log("Error in failsafeGet:", err);
 		})
 		switch (response.status) {
 			case 200:
 				return response;
+			case 404:
+				return response;
 			case 429: 
 				await sleep(5000);
+				console.log("Rate limited exceeded, trying again in 7 seconds");
 			case 503:
 			case 504:
 				await sleep(2000);
 				return this.failsafeGet(url);
 			default: 
 				console.log("Unknown error code in failsafe get:", response.status)
+				return response;
 		}
 	}
 
@@ -414,6 +437,7 @@ class LeagueHandler {
 (async () => {
 	if (process.argv[2] == "interactive") {
 		var league_handler = new LeagueHandler()
+		league_handler.conserve_rate_limit = false;
 		league_handler.championNameCapitalization("lee sin ")
 		const readline = require("readline");
 		const rl = readline.createInterface({
@@ -475,7 +499,7 @@ class LeagueHandler {
 					break;
 				case "past_names":
 					var names = await league_handler.getPastNames(args);
-					console.log("Past names:", names);
+					console.log("Names of this account over the last 2 years:\n", names);
 					break;
 			}
 		}
