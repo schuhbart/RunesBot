@@ -226,7 +226,11 @@ class LeagueHandler {
 			if (val.slice(0,2) == "--") args.flags.push(val.slice(2)) 
 			else if (val != "d") args[arg_name] = val;
 			else if (val != "_") args[arg_name] = default_vals[i];      
-		})    
+		})  
+		if (!(args.region in this.regions)) {
+			console.log("ERROR: Invalid region specified. Make sure to remove all spaces from the summoner name, like \"past_names thetankman na\". Valid regions:\n ",
+			Object.keys(this.regions));
+		}  
 		return args;    
 	}
 
@@ -427,7 +431,7 @@ class LeagueHandler {
 	async failsafeGet(url) {
 		url = encodeURI(url);
 		var response = await this.axios.get(url).catch(err => {
-			console.log("Error in failsafeGet:", err);
+			console.log("Error in failsafeGet");
 		})
 		switch (response.status) {
 			case 200:
@@ -522,6 +526,7 @@ class LeagueHandler {
 			  " The downloaded data is also stored on disk to be used again later.");
 		console.log("To get past names of an account, type past_names <name> <region>, like \"past_names schuhbart euw\". You can also skip matches to increase speed " +
 			"by including --<number> in the command. Adding --instant tries to avoid rate limiting, like \"past_names schuhbart euw --instant\".");
+		console.log("------- IMPORTANT -------\n Please remove spaces in the name, so \"G2 Jerkz\" becomes \"G2Jerkz\" (or \"g2jerkz\", the caps dont matter)");
 		while(running) {
 			var input = await async_reader.readLineAsync();
 			var command, args;
