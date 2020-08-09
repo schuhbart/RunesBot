@@ -1,3 +1,18 @@
+class asyncReader {
+    constructor() {
+        this.readline = require("readline");
+        this.rl = this.readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });    
+    }
+
+    async readLineAsync() {
+        return new Promise(resolve => this.rl.question("> ", (ans) => resolve(ans))
+        )
+    }   
+}
+
 class LeagueHandler {
 	constructor() {
 		this.champions = require('./champion.json')
@@ -468,8 +483,7 @@ class LeagueHandler {
 
 (async () => {
 	if (process.argv[2] == "interactive") {
-		const lib = require("./lib.js");
-		const async_reader = new lib.asyncReader();
+		const async_reader = new asyncReader();
 		fs = require("fs")
 		if (!fs.existsSync("bot_definitions.json")) fs.writeFileSync("bot_definitions.json", JSON.stringify({}))
 		var league_handler = new LeagueHandler()
@@ -549,3 +563,5 @@ function sleep(ms) {
 }
 
 module.exports = LeagueHandler
+
+
