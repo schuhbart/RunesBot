@@ -1,10 +1,11 @@
 # RunesBot
-A Twitch.tv bot that handles custom channel point rewards and uses the Riot Games API to retrieve live game rune information.
+A Twitch.tv bot that handles custom channel point rewards and uses the Riot Games API to retrieve live game rune information. 
+Also a bunch of scripts for extracting data from the LOL match history API.
 
 # Setup
 1. Install Node.js from https://nodejs.org/en/.
-2. Install tmi.js and request.js with the console commands `npm install tmi.js` and `npm install request.js`.
-3. Replace the six fields in bot_definitions.json with actual values. You can get a Riot API key from https://developer.riotgames.com/ and a Twitch OAuth token from https://twitchapps.com/tmi/.
-4. Download the League of Legends static data from https://ddragon.leagueoflegends.com/cdn/dragontail-VERSION.tgz. In the URL replace VERSION with the first entry in https://ddragon.leagueoflegends.com/api/versions.json. For patch 9.11 the URL would be https://ddragon.leagueoflegends.com/cdn/dragontail-9.11.1.tgz.
-5. Extract the static data archive and move the file dragontail-VERSION\VERSION\data\en_US\runesReforged.json to the source directory where bot.js is located.
-6. Run the bot with `node bot.js`.
+2. Open cmd in this folder
+3. Enter "npm i" to install package dependencies
+4. Enter "node league_handler.js interactive" for match history data extraction
+
+You can also run the Twitch and Discord bots if you are brave but you will have to fill in a lot of API keys / auth tokens etc.
