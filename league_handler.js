@@ -234,12 +234,14 @@ class LeagueHandler {
 				}				
 			}			
 		}
+		var new_entries = 0;
 		if (skip_interval > 1) console.log("Only one out of every " + skip_interval + " games will be downloaded.");
 		for (var url of urls) {
 			i++;
 			if (i % skip_interval != 0) {
 				continue;
 			}
+			new_entries++
 			console.log("Downloading match " + i + " out of " + urls.length);
 			var response = await this.failsafeGet(url);
 			var data = response.data;
@@ -256,7 +258,7 @@ class LeagueHandler {
 				}
 
 			}
-			if (i % 100 == 0) fs.writeFileSync(file_path, JSON.stringify(cached_matches));
+			if (new_entries % 100 == 0) fs.writeFileSync(file_path, JSON.stringify(cached_matches));
 		}
 		fs.writeFileSync(file_path, JSON.stringify(cached_matches));
 		return match_data
@@ -311,7 +313,6 @@ class LeagueHandler {
 				for (var participant of team) {
 					if (participant.account_id == account_id) {
 						var name = participant.name;
-						var vals = Object.values(names);
 						names[gameid] = name;
 					}
 				}
@@ -421,7 +422,9 @@ class LeagueHandler {
 		for (var i in data.participants) {
 			var team = Math.floor(i / 5);
 			var champ_id = data.participants[i].championId;
-			var account_id = data.participantIdentities[i].player.accountId;
+			var account_id;
+			if (currentAccountId in data.participants[i].player) account_id = data.participants[i].player.currentAccountId
+			else account_id = data.participantIdentities[i].player.accountId;
 			var name = data.participantIdentities[i].player.summonerName;
 			reduced.participants[team].push({ champion_id: champ_id, account_id: account_id, name: name });
 		}
