@@ -140,10 +140,8 @@ class LeagueHandler {
 	
 	// returns an array containing the matches
 	async getMatchHistory(args_array) {
-		console.log("args array in get match hisotry", args_array);
 		var args = this.formatMatchHistoryArgs(args_array);
-
-		console.log("formated args", args)
+		console.log("Getting match history for " + args.name + " (" + args.region + ")");
 		const account_data = (await this.getSummonerIDAsync(args.name, args.region));
 		if (account_data == undefined) console.log("Error in getMatchHistory: account data undefined");
 		var id = account_data.account_id;
@@ -152,15 +150,14 @@ class LeagueHandler {
 		if (args.queue == "ranked") url += "queue=420&";
 		if (args.begin_time != undefined) {
 			var date = new Date(args.begin_time);
-			console.log(date.getTime());
+			//console.log(date.getTime());
 			url += "beginTime=" + date.getTime() + "&";
 		}
 		if (args.end_time != undefined) {
 			var date = new Date(args.end_time);
-			console.log(date.getTime());
+			//console.log(date.getTime());
 			url += "endTime=" + date.getTime() + "&";
 		}
-		console.log(url);
 		var response = await this.failsafeGet(url, this.riot_api_header).catch(err => console.log("Error in getMatchHistory:", err));
 		var data = response.data;
 		if (data != undefined) {
@@ -199,7 +196,7 @@ class LeagueHandler {
 		var region = this.formatMatchHistoryArgs(args_array).region;
 		var name = this.formatMatchHistoryArgs(args_array).name;
 		var account_id = (await this.getSummonerIDAsync(name, region)).account_id
-		console.log(name, account_id)
+		//console.log(name, account_id)
 		var base_url = this.getBaseUrl(region) + "/lol/match/v4/matches/";
 		var match_data = {};
 		var cached_matches = {}
@@ -271,6 +268,26 @@ class LeagueHandler {
 			})
 		}
 		return {player_stats: player_stats, stats_with: stats_with, stats_against: stats_against};
+	}
+
+	async getPastNames(args_array) {
+		var matches = await this.getDataFromMatches(args_array);
+		var formated = this.formatMatchHistoryArgs(args_array)
+		var names = []
+		var account_id = (await this.getSummonerIDAsync(formated.name, formated.region)).account_id;
+		for (var match of Object.values(matches)) {
+			for (var team of match.participants) {
+				for (var participant of team) {
+					if (participant.account_id == account_id) {
+						var name = participant.name;
+						if (!names.includes(name)) {
+							names.push(name);
+						}
+					}
+				}
+			}
+		}
+		return names;
 	}
 
 	updateMap(champion_id, map, win) {
@@ -363,7 +380,8 @@ class LeagueHandler {
 			var team = Math.floor(i / 5);
 			var champ_id = data.participants[i].championId;
 			var account_id = data.participantIdentities[i].player.accountId;
-			reduced.participants[team].push({ champion_id: champ_id, account_id: account_id });
+			var name = data.participantIdentities[i].player.summonerName;
+			reduced.participants[team].push({ champion_id: champ_id, account_id: account_id, name: name });
 		}
 		return reduced;
 	}
@@ -437,6 +455,10 @@ class LeagueHandler {
 					var sorted = await league_handler.getSortedChampionStats(args);
 					console.log("Sorted by number of games:", sorted.num_games);
 					console.log("Sorted by winrate:", sorted.wr);
+					break;
+				case "past_names":
+					var names = await league_handler.getPastNames(args);
+					console.log("Past names:", names);
 					break;
 			}
 		}
