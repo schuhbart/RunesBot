@@ -423,7 +423,7 @@ class LeagueHandler {
 			var team = Math.floor(i / 5);
 			var champ_id = data.participants[i].championId;
 			var account_id;
-			if (currentAccountId in data.participants[i].player) account_id = data.participants[i].player.currentAccountId
+			if ("currentAccountId" in data.participantIdentities[i].player) account_id = data.participantIdentities[i].player.currentAccountId
 			else account_id = data.participantIdentities[i].player.accountId;
 			var name = data.participantIdentities[i].player.summonerName;
 			reduced.participants[team].push({ champion_id: champ_id, account_id: account_id, name: name });
