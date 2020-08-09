@@ -1,8 +1,3 @@
-const { RSA_X931_PADDING } = require('constants');
-const { count } = require('console');
-const { match } = require('assert');
-const { format } = require('path');
-
 class LeagueHandler {
 	constructor() {
 		this.champions = require('./champion.json')
