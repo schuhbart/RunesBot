@@ -143,8 +143,9 @@ class LeagueHandler {
 	}
 	
 	// returns an array containing the matches
-	async getMatchHistory(args_array) {
+	async getMatchHistory(args_array, include_all) {
 		var args = this.formatMatchHistoryArgs(args_array);
+		if (include_all) args.queue = "all";
 		console.log("Getting match history for " + args.name + " (" + args.region + ")");
 		const account_data = (await this.getSummonerIDAsync(args.name, args.region));
 		if (account_data == undefined) {
@@ -153,7 +154,7 @@ class LeagueHandler {
 		var id = account_data.account_id;
 		var url = this.getBaseUrl(args.region) + "/lol/match/v4/matchlists/by-account/" + id +"?";
 		if (args.champion != undefined && args.champion != "_") url += "champion=" + this.championNameToID(args.champion) + "&";
-		if (args.queue == "ranked") url += "queue=420&";
+		if (args.queue != "all") url += "queue=420&";
 		if (args.begin_time != undefined) {
 			var date = new Date(args.begin_time);
 			//console.log(date.getTime());
@@ -184,8 +185,8 @@ class LeagueHandler {
 
 	formatMatchHistoryArgs(args_array, mode = "default") {
 		var args = {};
-		var arg_names = ["name", "region", "champion", "begin_time", "end_time", "flags"]
-		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07", undefined, undefined]    
+		var arg_names = ["name", "region", "champion", "begin_time", "end_time", "flags", "queue"]
+		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07", undefined, undefined, undefined]    
 		if (mode == "help") return arg_names.join(" ");
 		if (mode == "example") return default_vals.join(" ");
 		if (args_array.length == 0) args_array = default_vals
@@ -197,8 +198,8 @@ class LeagueHandler {
 		return args;    
 	}
 
-	async getDataFromMatches(args_array) {    
-		var matches = await this.getMatchHistory(args_array);
+	async getDataFromMatches(args_array, include_all) {    
+		var matches = await this.getMatchHistory(args_array, true);
 		if (matches === undefined) return [];
 		var region = this.formatMatchHistoryArgs(args_array).region;
 		var name = this.formatMatchHistoryArgs(args_array).name;
@@ -221,7 +222,7 @@ class LeagueHandler {
 			else urls.push(base_url + game_id)
 		})
 		var i = 0;
-		var skip_interval;
+		var skip_interval = 1
 		var flags = this.formatMatchHistoryArgs(args_array).flags;
 		if (flags !== undefined) {
 			if (flags == "--instant") {
@@ -255,6 +256,7 @@ class LeagueHandler {
 				}
 
 			}
+			if (i % 100 == 0) fs.writeFileSync(file_path, JSON.stringify(cached_matches));
 		}
 		fs.writeFileSync(file_path, JSON.stringify(cached_matches));
 		return match_data
@@ -297,7 +299,7 @@ class LeagueHandler {
 	}
 
 	async getPastNames(args_array) {
-		var matches = await this.getDataFromMatches(args_array);
+		var matches = await this.getDataFromMatches(args_array, true);
 		var formated = this.formatMatchHistoryArgs(args_array)
 		var names = {}
 		var account_data = await this.getSummonerIDAsync(formated.name, formated.region);
