@@ -12,7 +12,7 @@ class LeagueHandler {
 		this.riot_api_header = { headers: { 'X-Riot-Token': this.key } }
 		this.rate_cap = 80;
 		this.conserve_rate_limit = true;
-
+		this.INVALID_KEY = -1
 		
 		this.QUERY_SUCCESS = 0;
 		this.NOT_INGAME = 1;
@@ -93,6 +93,8 @@ class LeagueHandler {
 					return this.id_cache[region][summoner_name]
 				} else if (response.status == 404) {
 					return undefined;
+				} else if (response.status == 403) {
+					return this.INVALID_KEY
 				} else console.log("Status code in getSummonerID:", response.status, "headers:", response.headers)
 			} else console.log("Response in getSummonerID undefined")
 		}
@@ -180,14 +182,16 @@ class LeagueHandler {
 
 	formatMatchHistoryArgs(args_array, mode = "default") {
 		var args = {};
-		var arg_names = ["name", "region", "champion", "begin_time", "end_time", "flags", "queue"]
-		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07", undefined, undefined, undefined]    
+		args.flags = []
+		var arg_names = ["name", "region", "champion", "begin_time", "end_time", "queue"]
+		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07", undefined, undefined]    
 		if (mode == "help") return arg_names.join(" ");
 		if (mode == "example") return default_vals.join(" ");
 		if (args_array.length == 0) args_array = default_vals
 		args_array.forEach((val, i) => {
 			var arg_name = arg_names[i];
-			if (val != "d") args[arg_name] = val;
+			if (val.slice(0,2) == "--") args.flags.push(val.slice(2)) 
+			else if (val != "d") args[arg_name] = val;
 			else if (val != "_") args[arg_name] = default_vals[i];      
 		})    
 		return args;    
@@ -204,6 +208,7 @@ class LeagueHandler {
 		var match_data = {};
 		var cached_matches = {}
 		const fs = require("fs");
+		if (!fs.existsSync("./match_data")) fs.mkdirSync("./match_data")
 		var file_path = "./match_data/" + account_id + ".json";
 		if (fs.existsSync(file_path)) {
 			cached_matches = JSON.parse(fs.readFileSync(file_path));
@@ -218,13 +223,13 @@ class LeagueHandler {
 		})
 		var i = 0;
 		var skip_interval = 1
-		var flags = this.formatMatchHistoryArgs(args_array).flags;
-		if (flags !== undefined) {
-			if (flags == "--instant") {
+		var flag = this.formatMatchHistoryArgs(args_array).flags[0];
+		if (flag !== undefined) {
+			if (flag == "instant") {
 				skip_interval = Math.ceil((urls.length / this.rate_cap) / 0.6)
 			} else {
-				var parsed = parseInt(flags)
-				if (parsed !== NaN) {
+				var parsed = parseInt(flag)
+				if (!isNaN(parsed)) {
 					skip_interval = parsed;
 				}				
 			}			
@@ -394,6 +399,9 @@ class LeagueHandler {
 		switch (response.status) {
 			case 200:
 				return response;
+			case 403:
+				console.log("\n\n\n----------------------------- Invalid Api key, please restart the program to update it ---------------------------\n\n\n")
+				return response;
 			case 404:
 				return response;
 			case 429: 
@@ -433,29 +441,57 @@ class LeagueHandler {
 		return response.headers["x-app-rate-limit-count"]
 	}
 
+	async isKeyInvalid() {		
+		var url = this.getBaseUrl("euw") + "/lol/summoner/v4/summoners/by-name/schuhbart"
+		var response = await this.axios.get(url)
+		if (response.status == 403) {
+			console.log("Invalid riot api key.");
+			return true;
+		}
+		return false;
+	}
+
+	async updateRiotKey(reader) {	
+		console.log("Please go to https://developer.riotgames.com/, click \"REGENERATE API KEY\" and paste it here.");
+		var key = await reader.readLineAsync();	
+		this.bot_definitions["RiotKey"] = key;	
+		this.key = this.bot_definitions["RiotKey"];			
+		this.axios.defaults.headers.common['X-Riot-Token'] = this.key;
+		if (await this.isKeyInvalid()) await this.updateRiotKey(reader)
+		else {
+			fs.writeFileSync("bot_definitions.json", JSON.stringify(this.bot_definitions));		
+		}
+	}
+
 }
+
 
 (async () => {
 	if (process.argv[2] == "interactive") {
+		const lib = require("./lib.js");
+		const async_reader = new lib.asyncReader();
+		fs = require("fs")
+		if (!fs.existsSync("bot_definitions.json")) fs.writeFileSync("bot_definitions.json", JSON.stringify({}))
 		var league_handler = new LeagueHandler()
+		if (!("RiotKey" in league_handler.bot_definitions)) {
+			await league_handler.updateRiotKey(async_reader)
+		} 	
 		league_handler.conserve_rate_limit = false;
-		league_handler.championNameCapitalization("lee sin ")
-		const readline = require("readline");
-		const rl = readline.createInterface({
-			input: process.stdin,
-			output: process.stdout
-		});    
-		function readLineAsync() {
-			return new Promise(resolve => rl.question("> ", (ans) => resolve(ans))
-			)
-		}
 		var running = true;
+
+		// test api key
+		var key_invalid = await league_handler.isKeyInvalid();
+		if (key_invalid) await league_handler.updateRiotKey(async_reader);
+
+
 		console.log("To retrieve match data, type md with the following arguments: " + league_handler.formatMatchHistoryArgs([], "help"));
 		console.log("The date is expected to be in the format year/month/day and end time is optional. Example arguments: " + league_handler.formatMatchHistoryArgs([], "example"))
 		console.log("Riot development API keys are limited to 100 requests per 2 minutes so the process will take about 10 minutes per 500 games." +
 			  " The downloaded data is also stored on disk to be used again later.");
+		console.log("To get past names of an account, type past_names <name> <region>, like \"past_names schuhbart euw\". You can also skip matches to increase speed " +
+			"by including --<number> in the command. Adding --instant tries to avoid rate limiting, like \"past_names schuhbart euw --instant\".");
 		while(running) {
-			var input = await readLineAsync();
+			var input = await async_reader.readLineAsync();
 			var command, args;
 			if (input != undefined) {
 				input = input.trim().split(" ");
