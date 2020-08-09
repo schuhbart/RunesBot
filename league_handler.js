@@ -1,3 +1,20 @@
+/*
+    HOW TO RUN THIS: 
+    1. Download the zip file on github (https://github.com/schuhbart/RunesBot/archive/master.zip)
+    2. Install node.js (https://nodejs.org/en/)
+    3. Unzip and open cmd in the folder
+    4. In cmd in the folder, enter
+        npm i 
+        to install packages
+    5. Enter
+        node league_handler.js interactive
+        to start the program and follow the instructions
+
+*/
+
+
+
+
 class asyncReader {
     constructor() {
         this.readline = require("readline");
@@ -15,7 +32,8 @@ class asyncReader {
 
 class LeagueHandler {
 	constructor() {
-		this.champions = require('./champion.json')
+        const fs = require("fs");
+        if (fs.existsSync("champion.json")) this.champions = require('./champion.json')
 		this.axios = require('axios')
 		this.bot_definitions = require('./bot_definitions.json');
 		this.regions = {'br': 'br1', 'eune': 'eun1', 'euw': 'euw1', 'jp': 'jp1', 'kr': 'kr', 'lan': 'la1', 'las': 'la2', 'na': 'na1', 'oce': 'oc1', 'tr': 'tr1', 'ru': 'ru', 'pbe': 'pbe1'}
@@ -467,7 +485,7 @@ class LeagueHandler {
 	}
 
 	async updateRiotKey(reader) {	
-		console.log("Please go to https://developer.riotgames.com/, click \"REGENERATE API KEY\" and paste it here.");
+		console.log("Please go to https://developer.riotgames.com/, log in (top right corner), then click \"REGENERATE API KEY\" and paste it here.");
 		var key = await reader.readLineAsync();	
 		this.bot_definitions["RiotKey"] = key;	
 		this.key = this.bot_definitions["RiotKey"];			
@@ -563,5 +581,3 @@ function sleep(ms) {
 }
 
 module.exports = LeagueHandler
-
-
