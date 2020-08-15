@@ -133,7 +133,8 @@ class LeagueHandler {
 		}
 	}
 
-	getBaseUrl(region) {
+	getBaseUrl(region, exact_region) {
+		if (exact_region === true) return  'https://' + region + '.api.riotgames.com'
 		return 'https://' + this.getRegion(region) + '.api.riotgames.com'
 	}
 
@@ -241,7 +242,7 @@ class LeagueHandler {
 		var name = this.formatMatchHistoryArgs(args_array).name;
 		var account_id = (await this.getSummonerIDAsync(name, region)).account_id
 		//console.log(name, account_id)
-		var base_url = this.getBaseUrl(region) + "/lol/match/v4/matches/";
+		var api_url = "/lol/match/v4/matches/";
 		var match_data = {};
 		var cached_matches = {}
 		const fs = require("fs");
@@ -255,8 +256,9 @@ class LeagueHandler {
 		console.log("Getting match data");
 		matches.forEach(match => {
 			var game_id = match.gameId;
+			var region = match.platformId;
 			if (game_id in cached_matches) match_data[game_id] = cached_matches[game_id]
-			else urls.push(base_url + game_id)
+			else urls.push(this.getBaseUrl(region, true) + api_url + game_id)
 		})
 		var i = 0;
 		var skip_interval = 1
