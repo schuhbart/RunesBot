@@ -439,6 +439,11 @@ class LeagueHandler {
 		var response = await this.axios.get(url).catch(err => {
 			console.log("Error in failsafeGet");
 		})
+		if (response === undefined) {	
+			console.log("Undefined response, trying again in 10 seconds")		
+			await sleep(10000);
+			return this.failsafeGet(url);
+		}
 		switch (response.status) {
 			case 200:
 				return response;
@@ -453,7 +458,8 @@ class LeagueHandler {
 				await sleep(sleep_time*1000);
 			case 503:
 			case 504:
-				await sleep(2000);
+				console.log("Service currently unavailable, trying again in 10 seconds")		
+				await sleep(10000);
 				return this.failsafeGet(url);
 			default: 
 				console.log("Unknown error code in failsafe get:", response.status)
