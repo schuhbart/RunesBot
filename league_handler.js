@@ -174,7 +174,7 @@ class LeagueHandler {
 	}
 	
 	// returns an array containing the matches
-	async getMatchHistory(args_array, include_all) {
+	async getMatchHistory(args_array, include_all = false) {
 		var args = this.formatMatchHistoryArgs(args_array);
 		if (include_all) args.queue = "all";
 		console.log("Getting match history for " + args.name + " (" + args.region + ")");
@@ -219,6 +219,7 @@ class LeagueHandler {
 		args.flags = []
 		var arg_names = ["name", "region", "champion", "begin_time", "end_time", "queue"]
 		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07", undefined, undefined]    
+		args["region"] = this.default_region
 		if (mode == "help") return arg_names.join(" ");
 		if (mode == "example") return default_vals.join(" ");
 		if (args_array.length == 0) args_array = default_vals
@@ -226,7 +227,7 @@ class LeagueHandler {
 			var arg_name = arg_names[i];
 			if (val.slice(0,2) == "--") args.flags.push(val.slice(2)) 
 			else if (val != "d") args[arg_name] = val;
-			else if (val != "_") args[arg_name] = default_vals[i];      
+			else if (val != "_" || val == undefined) args[arg_name] = default_vals[i];      
 		})  
 		if (!(args.region in this.regions)) {
 			console.log("ERROR: Invalid region specified. Make sure to remove all spaces from the summoner name, like \"past_names thetankman na\". Valid regions:\n ",
@@ -235,8 +236,8 @@ class LeagueHandler {
 		return args;    
 	}
 
-	async getDataFromMatches(args_array, include_all) {    
-		var matches = await this.getMatchHistory(args_array, true);
+	async getDataFromMatches(args_array, dl_all = true) {    
+		var matches = await this.getMatchHistory(args_array, false);
 		if (matches === undefined) return [];
 		var region = this.formatMatchHistoryArgs(args_array).region;
 		var name = this.formatMatchHistoryArgs(args_array).name;
@@ -262,7 +263,8 @@ class LeagueHandler {
 		})
 		var i = 0;
 		var skip_interval = 1
-		var flag = this.formatMatchHistoryArgs(args_array).flags[0];
+		var flag = this.formatMatchHistoryArgs(args_array).flags[0];		
+		if (!dl_all) flag = "instant"
 		if (flag !== undefined) {
 			if (flag == "instant") {
 				skip_interval = Math.ceil((urls.length / this.rate_cap) / 0.6)
@@ -272,7 +274,7 @@ class LeagueHandler {
 					skip_interval = parsed;
 				}				
 			}			
-		}
+		} 
 		var new_entries = 0;
 		if (skip_interval > 1) console.log("Only one out of every " + skip_interval + " games will be downloaded.");
 		for (var url of urls) {
@@ -303,8 +305,8 @@ class LeagueHandler {
 		return match_data
 	}
 
-	async getChampionStats(args_array) {
-		var match_data = await this.getDataFromMatches(args_array);
+	async getChampionStats(args_array, dl_all = false) {
+		var match_data = await this.getDataFromMatches(args_array, dl_all);
 		var args = this.formatMatchHistoryArgs(args_array);
 		var player_id =  (await this.getSummonerIDAsync(args.name, args.region)).account_id;
 		var stats_with = new Map(); 
@@ -339,8 +341,8 @@ class LeagueHandler {
 		return {player_stats: player_stats, stats_with: stats_with, stats_against: stats_against};
 	}
 
-	async getPastNames(args_array) {
-		var matches = await this.getDataFromMatches(args_array, true);
+	async getPastNames(args_array, dl_all) {
+		var matches = await this.getDataFromMatches(args_array, dl_all);
 		var formated = this.formatMatchHistoryArgs(args_array)
 		var names = {}
 		var account_data = await this.getSummonerIDAsync(formated.name, formated.region);
@@ -352,7 +354,9 @@ class LeagueHandler {
 				for (var participant of team) {
 					if (participant.account_id == account_id) {
 						var name = participant.name;
-						names[gameid] = name;
+						if (name != undefined) {
+							names[gameid] = name;
+						}
 					}
 				}
 			}
@@ -405,7 +409,7 @@ class LeagueHandler {
 	}
 
 	async getSortedChampionStats(args) {
-		var stats = await this.getChampionStats(args);
+		var stats = await this.getChampionStats(args, false);
 		return {num_games: this.sortStatsByGames(stats), wr: this.sortStatsByWR(stats)};
 	}	
 
@@ -507,6 +511,7 @@ class LeagueHandler {
 
 (async () => {
 	if (process.argv[2] == "interactive") {
+		const DEFAULT_REGION = "euw"
 		const async_reader = new asyncReader();
 		fs = require("fs")
 		if (!fs.existsSync("bot_definitions.json")) fs.writeFileSync("bot_definitions.json", JSON.stringify({}))
@@ -514,6 +519,9 @@ class LeagueHandler {
 		if (!("RiotKey" in league_handler.bot_definitions)) {
 			await league_handler.updateRiotKey(async_reader)
 		} 	
+		if (!("DefaultRegion" in league_handler.bot_definitions)) {
+			league_handler.default_region = DEFAULT_REGION
+		}
 		league_handler.conserve_rate_limit = false;
 		var running = true;
 
@@ -574,9 +582,14 @@ class LeagueHandler {
 					console.log("Sorted by winrate:", sorted.wr);
 					break;
 				case "past_names":
-					var names = await league_handler.getPastNames(args);
+				case "pp":
+					var names = await league_handler.getPastNames(args, true);
 					console.log("Names of this account over the last 2 years:\n", names);
 					break;
+				case "p":
+					args = [args.join(" ")]
+					var names = await league_handler.getPastNames(args, false);
+					console.log("Names of this account over the last 2 years:\n", names);
 			}
 		}
 		rl.close();
