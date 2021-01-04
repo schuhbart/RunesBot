@@ -50,9 +50,23 @@ class LeagueHandler {
 		this.QUERY_SUCCESS = 0;
 		this.NOT_INGAME = 1;
 		this.CHAMPION_NOT_FOUND = 2;
+		this.QUERY_FAIL = 3
 
 		this.axios.defaults.validateStatus = (status) => status < 600;
 		this.axios.defaults.headers.common['X-Riot-Token'] = this.key;
+		this.makeChampionsObjectNotStupid()
+	}
+
+	// The id for Kha'zix is 'Khazix' and the id for Kog'Maw is 'KogMaw' and it makes 
+	// the champion.json file impossible to use hehexd :)
+	makeChampionsObjectNotStupid() {
+		for (const champ_name in this.champions.data) {
+			var not_stupid_name = champ_name.toLowerCase()
+			if (champ_name != not_stupid_name) {
+				this.champions.data[not_stupid_name] = this.champions.data[champ_name]
+				delete this.champions.data[champ_name]
+			}
+		}
 	}
 
 	normalizeName(name) {
@@ -69,13 +83,9 @@ class LeagueHandler {
 	}
 
 	championNameCapitalization(name) {
-		name = name.trim()
-		name = name.split(" ");
-		for (const [index, word] of name.entries()) {
-			if (word !== undefined) name[index] = word.replace(word[0], word[0].toUpperCase()[0])
-		}
-		name = name.join("");
+		name = name.toLowerCase()		
 		name = name.replace("'", "");
+		name = name.replace(" ", "")
 		return name;
 	}
 
@@ -186,6 +196,7 @@ class LeagueHandler {
 		var url = this.getBaseUrl(args.region) + "/lol/match/v4/matchlists/by-account/" + id +"?";
 		if (args.champion != undefined && args.champion != "_") url += "champion=" + this.championNameToID(args.champion) + "&";
 		if (args.queue != "all") url += "queue=420&";
+		if (args.begin_time === undefined) args.begin_time = "2020/01/01"
 		if (args.begin_time != undefined) {
 			var date = new Date(args.begin_time);
 			//console.log(date.getTime());
@@ -203,13 +214,15 @@ class LeagueHandler {
 		if (data != undefined) {
 			var matches = data.matches;
 			var begin_index = 100;
-			while (response.data.matches.length > 0) {
-				var temp_url = url + "beginIndex=" + begin_index +"&";
-				response = await this.failsafeGet(temp_url, this.riot_api_header);
-				matches = matches.concat(response.data.matches);
-				begin_index += 100;
+			if (response.data.matches != undefined) {
+				while (response.data.matches.length > 0) {
+					var temp_url = url + "beginIndex=" + begin_index +"&";
+					response = await this.failsafeGet(temp_url, this.riot_api_header);
+					matches = matches.concat(response.data.matches);
+					begin_index += 100;
+				}
+				return matches;
 			}
-			return matches;
 		}
 		return [];
 	}
@@ -218,7 +231,13 @@ class LeagueHandler {
 		var args = {};
 		args.flags = []
 		var arg_names = ["name", "region", "champion", "begin_time", "end_time", "queue"]
-		var default_vals = ["schuhbart", "euw", "sona", "2020/01/07", undefined, undefined]    
+		var default_vals
+		if (mode == "no_defaults") {
+			default_vals = [undefined, undefined, undefined, undefined, undefined, undefined]
+		} else {
+			default_vals = ["schuhbart", "euw", "sona", "2020/30/01", undefined, undefined]    
+		}
+		if (args_array[3] === undefined) args_array[3] = "2020/01/01"
 		args["region"] = this.default_region
 		if (mode == "help") return arg_names.join(" ");
 		if (mode == "example") return default_vals.join(" ");
@@ -236,8 +255,8 @@ class LeagueHandler {
 		return args;    
 	}
 
-	async getDataFromMatches(args_array, dl_all = true) {    
-		var matches = await this.getMatchHistory(args_array, false);
+	async getDataFromMatches(args_array, dl_all = true, include_all = false) {    
+		var matches = await this.getMatchHistory(args_array, include_all);
 		if (matches === undefined) return [];
 		var region = this.formatMatchHistoryArgs(args_array).region;
 		var name = this.formatMatchHistoryArgs(args_array).name;
@@ -245,6 +264,7 @@ class LeagueHandler {
 		//console.log(name, account_id)
 		var api_url = "/lol/match/v4/matches/";
 		var match_data = {};
+		match_data.regions = []
 		var cached_matches = {}
 		const fs = require("fs");
 		if (!fs.existsSync("./match_data")) fs.mkdirSync("./match_data")
@@ -260,6 +280,7 @@ class LeagueHandler {
 			var region = match.platformId;
 			if (game_id in cached_matches) match_data[game_id] = cached_matches[game_id]
 			else urls.push(this.getBaseUrl(region, true) + api_url + game_id)
+			if (!match_data.regions.includes(region)) match_data.regions.push(region)
 		})
 		var i = 0;
 		var skip_interval = 1
@@ -286,7 +307,7 @@ class LeagueHandler {
 			console.log("Downloading match " + i + " out of " + urls.length);
 			var response = await this.failsafeGet(url);
 			var data = response.data;
-			if (data !== undefined) {
+			if (data !== undefined && data.teams !== undefined) {
 				match_data[data.gameId] = this.reduceMatchData(data);
 				cached_matches[data.gameId] = match_data[data.gameId];
 			}
@@ -306,6 +327,7 @@ class LeagueHandler {
 	}
 
 	async getChampionStats(args_array, dl_all = false) {
+		dl_all = false
 		var match_data = await this.getDataFromMatches(args_array, dl_all);
 		var args = this.formatMatchHistoryArgs(args_array);
 		var player_id =  (await this.getSummonerIDAsync(args.name, args.region)).account_id;
@@ -342,7 +364,7 @@ class LeagueHandler {
 	}
 
 	async getPastNames(args_array, dl_all) {
-		var matches = await this.getDataFromMatches(args_array, dl_all);
+		var matches = await this.getDataFromMatches(args_array, dl_all, true);
 		var formated = this.formatMatchHistoryArgs(args_array)
 		var names = {}
 		var account_data = await this.getSummonerIDAsync(formated.name, formated.region);
@@ -350,15 +372,19 @@ class LeagueHandler {
 		var account_id = account_data.account_id
 		for (var gameid in matches) {
 			var match = matches[gameid]
-			for (var team of match.participants) {
-				for (var participant of team) {
-					if (participant.account_id == account_id) {
-						var name = participant.name;
-						if (name != undefined) {
-							names[gameid] = name;
+			if (match.participants !== undefined) {
+				for (var team of match.participants) {
+					for (var participant of team) {
+						if (participant.account_id == account_id) {
+							var name = participant.name;
+							if (name != undefined) {
+								names[gameid] = name;
+							}
 						}
 					}
 				}
+			} else if (!Array.isArray(match)) {
+				console.log("WARNING: Participants of match undefined. Match:", match)
 			}
 		}
 		var sorted_names = []
@@ -368,6 +394,9 @@ class LeagueHandler {
 		var reduced_names = [];
 		for(var i = 0; i < sorted_names.length; i++) {
 			if (sorted_names[i] != sorted_names[i+1]) reduced_names.push(sorted_names[i])
+		}
+		if (matches.regions !== undefined && matches.regions.length > 1) {
+			console.log("Transfer detected. Account played on the following regions:", matches.regions)
 		}
 		return reduced_names.reverse();
 	}
@@ -410,27 +439,81 @@ class LeagueHandler {
 
 	async getSortedChampionStats(args) {
 		var stats = await this.getChampionStats(args, false);
-		return {num_games: this.sortStatsByGames(stats), wr: this.sortStatsByWR(stats)};
+		var format = this.formatMatchHistoryArgs(args)
+		return this.formatStats({num_games: this.sortStatsByGames(stats), wr: this.sortStatsByWR(stats)}, format);
 	}	
 
-	formatStats(stats, champion_name) {		
-		var calcWR = wl => 100 * wl[0] / (wl[0] + wl[1]);
-		var formatWL = wl => wl[0] + "W " + wl[1] + "L, " + calcWR(wl) + "%";
-		if (champion_name == "_") champion_name = "all champions"
-		var return_string = "Stats on " + champion_name + ":\n";
-		return_string += "Total winrate: " + formatWL(stats.player_stats) +"\n";
-		return_string += "Stats with champion on allied team:\n";
-		var ally_stats = stats.stats_with;
-		var enemy_stats = stats.stats_against;
+	async validateStatParams(args) {
+		var params = this.formatMatchHistoryArgs(args, "no_defaults")
+		if (!(params.region in this.regions)) {
+			return {status: this.QUERY_FAIL, help: "Region " + params.region + " is not valid. Available regions: " + Object.keys(this.regions).join(", ")}
+		} 
+		var summoner_id = await this.getSummonerIDAsync(params.name, params.region)
+		if (summoner_id === undefined || summoner_id == this.INVALID_KEY) {
+			return {status: this.QUERY_FAIL, help: "Did not find summoner with name " + params.name + " on server " + params.region + "."}
+		}
+		if (!(this.isChampion(params.champion))) {
+			return {status: this.QUERY_FAIL, help: "Did not find a champion called " + params.champion + "."}
+		}
+		var date = new Date(params.begin_time);
+		var time = parseInt(date.getTime())
+		if (isNaN(time)) {
+			return {status: this.QUERY_FAIL, help: "Invalid start date \"" + params.begin_time + "\"."}
+		}
+		return {status: this.QUERY_SUCCESS}
+	}
+
+	formatStats(stats, formatted_args) {		
+		var calcWR = wl => (100 * wl[0] / (wl[0] + wl[1])).toString().substring(0, 4);
+		var formatWL = (wl, champ) => {
+			var total = wl[0] + wl[1]
+			return (champ + ": \*\*" + calcWR(wl) + "%\*\*").padEnd(30, " ") + "(" + total + " games)";
+		}
+		var sorted_by_games = stats.num_games
+		var sorted_by_wr = stats.wr
+		if (formatted_args.champion == "_") formatted_args.champion = "all champions"
+		else formatted_args.champion = formatted_args.champion[0].toUpperCase() + formatted_args.champion.substring(1, formatted_args.champion.length)
+		var return_string = ""
+		console.log(formatted_args.begin_time)
+		return_string += "#Stats for " + formatted_args.name + " (" + formatted_args.region.toUpperCase() + ") on " + formatted_args.champion + ", since " + formatted_args.begin_time + ":\n";
+		return_string += formatWL(sorted_by_games.player_stats, "Total winrate: ") +"\n\n\n";
+		return_string += "Sorted by the number of games\n"
+		return_string += "-----------------------------\n";
+		return_string += "Stats with these champions on allied team:\n";
+		return_string += "-----------------------------\n";
+		var ally_stats = sorted_by_games.stats_with;
+		var enemy_stats = sorted_by_games.stats_against;
 		var formatMap =	map => {
 			var string = "";
 			map.forEach((stat, champ) => {
-				string += champ + ": " + formatWL(stat) + "\n";
+				string += formatWL(stat, champ) + "\n";
 			})
 			return string;
 		}	
 		return_string += formatMap(ally_stats)
+		return_string += "\n\nStats against these champions on the enemy team:\n";
+		return_string += "-----------------------------\n";
 		return_string += formatMap(enemy_stats);
+
+		return_string += "\nSorted by matchup winrate\n"
+		return_string += "-----------------------------\n";
+		return_string += "Stats with these champions on allied team:\n";
+		return_string += "-----------------------------\n";
+		var ally_stats = sorted_by_wr.stats_with;
+		var enemy_stats = sorted_by_wr.stats_against;
+		var formatMap =	map => {
+			var string = "";
+			map.forEach((stat, champ) => {
+				string += formatWL(stat, champ) + "\n";
+			})
+			return string;
+		}	
+		return_string += formatMap(ally_stats)
+		return_string += "\n\nStats against these champions on the enemy team:\n";
+		return_string += "-----------------------------\n";
+		return_string += formatMap(enemy_stats);
+		console.log(return_string)
+		return_string = return_string.replace(/ /g, "&nbsp;")
 		return return_string
 	}
 
@@ -514,14 +597,13 @@ class LeagueHandler {
 
 }
 
-
 (async () => {
 	if (process.argv[2] == "interactive") {
 		const DEFAULT_REGION = "euw"
 		const async_reader = new asyncReader();
 		fs = require("fs")
 		if (!fs.existsSync("bot_definitions.json")) fs.writeFileSync("bot_definitions.json", JSON.stringify({}))
-		var league_handler = new LeagueHandler()
+		var league_handler = new LeagueHandler()		
 		if (!("RiotKey" in league_handler.bot_definitions)) {
 			await league_handler.updateRiotKey(async_reader)
 		} 	
@@ -535,7 +617,6 @@ class LeagueHandler {
 		var key_invalid = await league_handler.isKeyInvalid();
 		if (key_invalid) await league_handler.updateRiotKey(async_reader);
 
-
 		console.log("To retrieve match data, type md with the following arguments: " + league_handler.formatMatchHistoryArgs([], "help"));
 		console.log("The date is expected to be in the format year/month/day and end time is optional. Example arguments: " + league_handler.formatMatchHistoryArgs([], "example"))
 		console.log("Riot development API keys are limited to 100 requests per 2 minutes so the process will take about 10 minutes per 500 games." +
@@ -543,6 +624,8 @@ class LeagueHandler {
 		console.log("To get past names of an account, type past_names <name> <region>, like \"past_names schuhbart euw\". You can also skip matches to increase speed " +
 			"by including --<number> in the command. Adding --instant tries to avoid rate limiting, like \"past_names schuhbart euw --instant\".");
 		console.log("------- IMPORTANT -------\n Please remove spaces in the name, so \"G2 Jerkz\" becomes \"G2Jerkz\" (or \"g2jerkz\", the caps dont matter)");
+    console.log("----------------------")
+    console.log("You can also type \"p <name>\" to perform an instant name lookup on the default server (" + DEFAULT_REGION + ") or \"pp <name>\" to perform a slow name lookup. The name can contain spaces.")
 		while(running) {
 			var input = await async_reader.readLineAsync();
 			var command, args;
@@ -583,9 +666,8 @@ class LeagueHandler {
 					console.log(await league_handler.getChampionStats(args));
 					break;
 				case "st_sort":
-					var sorted = await league_handler.getSortedChampionStats(args);
-					console.log("Sorted by number of games:", sorted.num_games);
-					console.log("Sorted by winrate:", sorted.wr);
+					var stats = await league_handler.getSortedChampionStats(args);
+					console.log(stats)
 					break;
 				case "past_names":
 				case "pp":
